@@ -115,7 +115,7 @@ func (r *volumes) tryVolume(ctx context.Context, id string, attempt uint) {
 		}
 	} else {
 		if err := r.unpublishVolume(timeoutCtx, vs.volume); err != nil {
-			log.G(timeoutCtx).WithError(err).Info("upublishing volume failed")
+			log.G(timeoutCtx).WithError(err).Info("unpublishing volume failed")
 			r.pendingVolumes.Enqueue(id, attempt+1)
 		} else {
 			// if unpublishing was successful, then call the callback
