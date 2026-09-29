@@ -1,6 +1,7 @@
 package volumequeue
 
 import (
+	"math/bits"
 	"sync"
 	"time"
 )
@@ -34,16 +35,32 @@ type timerSource struct{}
 
 // NewTimer creates a new timer.
 func (timerSource) NewTimer(attempt uint) vqTimer {
-	var waitFor time.Duration
+	return timer{Timer: time.NewTimer(retryInterval(attempt))}
+}
+
+// maxRetryAttempt is the attempt number from which on the retry interval is
+// capped at maxRetryInterval. 1<<maxRetryAttempt is the smallest power of two
+// greater than maxRetryInterval/baseRetryInterval, so
+// baseRetryInterval<<maxRetryAttempt already exceeds maxRetryInterval, and any
+// smaller shift stays below it and cannot overflow.
+var maxRetryAttempt = uint(bits.Len64(uint64(maxRetryInterval / baseRetryInterval)))
+
+// retryInterval returns how long to wait before the given attempt.
+func retryInterval(attempt uint) time.Duration {
 	if attempt == 0 {
-		waitFor = 0
-	} else {
-		// bit-shifting the base retry interval will raise it by 2 to the power
-		// of attempt. this is an easy way to do an exponent solely with
-		// integers
-		waitFor = min(baseRetryInterval<<attempt, maxRetryInterval)
+		return 0
 	}
-	return timer{Timer: time.NewTimer(waitFor)}
+	// time.Duration is a signed 64-bit integer, so shifting the base retry
+	// interval by a large attempt number overflows, yielding a negative or
+	// zero duration and retrying without any delay. cap the attempt before
+	// shifting.
+	if attempt >= maxRetryAttempt {
+		return maxRetryInterval
+	}
+	// bit-shifting the base retry interval will raise it by 2 to the power
+	// of attempt. this is an easy way to do an exponent solely with
+	// integers
+	return min(baseRetryInterval<<attempt, maxRetryInterval)
 }
 
 // timer wraps a time.Timer to provide a Done method.
